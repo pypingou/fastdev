@@ -2,3 +2,6 @@
 /build
 /PLAN.md
 *.tar.gz
+*.rpm
+/vendor
+/.cargo

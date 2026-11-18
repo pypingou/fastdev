@@ -3,7 +3,7 @@
 
 Name:           fastdev
 Version:        0.1.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        fastdev automotive boot speedup - static device bring-up
 License:        Proprietary
 Source0:        %{name}-%{version}.tar.gz
@@ -55,9 +55,22 @@ the capture-and-validate workflow.
 
 %prep
 %setup -q -n fastdev
+# mock/COPR builds have no network access, so %%build can't let cargo hit
+# crates.io - point it at the vendor/ tree shipped inside Source0 instead
+# (populated by `cargo vendor vendor` before the tarball is built - see
+# the README). Generated here rather than committed, so it's never stale
+# relative to wherever vendor/ actually lands.
+mkdir -p .cargo
+cat > .cargo/config.toml <<'EOF'
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
+EOF
 
 %build
-cargo build --release --workspace
+cargo build --release --workspace --locked --offline
 
 %install
 # fastdev-prep
@@ -136,6 +149,11 @@ fi
 %{_bindir}/fastdev-diff
 
 %changelog
+* Wed Nov 18 2026 fastdev - 0.1.0-2
+- Build offline against a vendor/ tree shipped in Source0
+  (`cargo build --locked --offline`) - COPR/mock has no network access
+  in %%build, confirmed by a real failed build (could not resolve
+  index.crates.io).
 * Wed Nov 18 2026 fastdev - 0.1.0-1
 - Merge fastdev-prep/fastdev-usb/fastdev-tools into one spec with
   subpackages, sharing a single cargo build. Build from Source0 via

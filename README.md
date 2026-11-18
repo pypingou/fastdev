@@ -187,35 +187,42 @@ binaries into three subpackages - `fastdev-prep`, `fastdev-usb`,
 `fastdev-tools` - from a single `rpmbuild -bb` invocation. To build from a
 tarball rather than a live checkout:
 
-1. Tarball the source tree (`git archive` won't work here: a plain source
-   snapshot is exactly what `%prep`/`%build` need - `target/` is excluded
-   and not shipped, since `%build` compiles it fresh inside the chroot).
-   Write the archive *outside* the tree being archived — writing it inside
-   (even with a matching `--exclude`) still changes the directory's own
-   entry list while tar is walking it, which tar reports as "file changed
-   as we read it":
+1. Vendor the Cargo dependencies first. `%build` runs `cargo build
+   --locked --offline`, because build systems like COPR's actually have no
+   network access in `%build` - confirmed by a real COPR build failing with
+   `Could not resolve host: index.crates.io`. `%prep` generates
+   `.cargo/config.toml` itself (pointing at `vendor/`), so you only need to
+   produce the `vendor/` tree and ship it inside the tarball:
+   ```
+   cargo vendor vendor
+   ```
+
+2. Tarball the source tree (`git archive` won't work here: it wouldn't
+   include the `vendor/` tree just generated, which isn't tracked by git -
+   `target/` is excluded and not shipped, since `%build` compiles it fresh
+   inside the chroot). Write the archive *outside* the tree being archived
+   — writing it inside (even with a matching `--exclude`) still changes the
+   directory's own entry list while tar is walking it, which tar reports
+   as "file changed as we read it":
    ```
    tar czf ../fastdev-0.1.0.tar.gz \
        --exclude=.git --exclude=build --exclude=target \
        -C .. "$(basename "$PWD")"
    ```
 
-2. Set up a standard rpmbuild tree and place the tarball in `SOURCES`
+3. Set up a standard rpmbuild tree and place the tarball in `SOURCES`
    (`%prep`'s `%setup` extracts it, not you):
    ```
    rpmdev-setuptree   # creates ~/rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
    cp ../fastdev-0.1.0.tar.gz ~/rpmbuild/SOURCES/
    ```
 
-3. Build all three packages in one invocation:
+4. Build all three packages in one invocation:
    ```
    rpmbuild -bb rpm/fastdev.spec
    ```
    RPMs land in `~/rpmbuild/RPMS/<arch>/`: `fastdev-prep-*.rpm`,
-   `fastdev-usb-*.rpm`, `fastdev-tools-*.rpm`. `cargo` needs network access
-   to fetch crates during `%build` unless dependencies are vendored
-   (`cargo vendor`) with `.cargo/config.toml` pointed at the vendored tree
-   - relevant if your `mock`/`koji` build root is network-sandboxed.
+   `fastdev-usb-*.rpm`, `fastdev-tools-*.rpm`.
 
 ## Status
 
