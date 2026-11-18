@@ -199,6 +199,7 @@ live checkout:
    ```
    tar czf fastdev-0.1.0.tar.gz \
        --exclude=.git --exclude=build --exclude='target/debug' \
+       --exclude='*.tar.gz' \
        -C .. "$(basename "$PWD")"
    ```
 
