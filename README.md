@@ -195,18 +195,20 @@ live checkout:
 
 2. Tarball the source tree, including the now-built `target/release/`
    (`git archive` won't work here: `target/` is gitignored, and that's
-   exactly what the specs read from):
+   exactly what the specs read from). Write the archive *outside* the tree
+   being archived — writing it inside (even with a matching `--exclude`)
+   still changes the directory's own entry list while tar is walking it,
+   which tar reports as "file changed as we read it":
    ```
-   tar czf fastdev-0.1.0.tar.gz \
+   tar czf ../fastdev-0.1.0.tar.gz \
        --exclude=.git --exclude=build --exclude='target/debug' \
-       --exclude='*.tar.gz' \
        -C .. "$(basename "$PWD")"
    ```
 
 3. Set up a standard rpmbuild tree and extract the tarball into it:
    ```
    rpmdev-setuptree   # creates ~/rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
-   cp fastdev-0.1.0.tar.gz ~/rpmbuild/SOURCES/
+   cp ../fastdev-0.1.0.tar.gz ~/rpmbuild/SOURCES/
    tar xzf ~/rpmbuild/SOURCES/fastdev-0.1.0.tar.gz -C ~/rpmbuild/SOURCES/
    ```
 
