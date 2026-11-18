@@ -1,0 +1,42 @@
+%global debug_package %{nil}
+
+# Template, one build per board revision. Build with:
+#   rpmbuild -bb fastdev-data.spec.in \
+#       --define "board_id qemu-x86_64" \
+#       --define "data_dir /path/to/fastdev-compile/output"
+#
+# Deliberately its own package, separate from fastdev-prep, so
+# regenerating a board's captured data never forces a binary
+# rebuild/requalification.
+
+Name:           fastdev-data-%{board_id}
+Version:        0.1.0
+Release:        9%{?dist}
+Summary:        fastdev precomputed device snapshot for board %{board_id}
+License:        Proprietary
+BuildArch:      noarch
+
+%description
+Precomputed tmpfiles.conf, udev-data/, check-manifest.json, and a real udev
+rule (10-fastdev-precomputed.rules) for board %{board_id}, as produced by
+fastdev-compile from a reference-boot capture. check-manifest.json is
+validated by fastdev-check (diagnostic only); the udev rule
+is what actually speeds up boot, by pre-seeding ID_FS_* properties and
+skipping blkid's real disk read per already-captured device - the stock
+udev chain (daemon/trigger/settle/sockets) runs completely unmodified.
+
+%install
+mkdir -p %{buildroot}%{_prefix}/lib/fastdev/%{board_id}
+mkdir -p %{buildroot}%{_prefix}/lib/udev/rules.d
+cp -a %{data_dir}/tmpfiles.conf %{buildroot}%{_prefix}/lib/fastdev/%{board_id}/
+cp -a %{data_dir}/udev-data %{buildroot}%{_prefix}/lib/fastdev/%{board_id}/
+cp -a %{data_dir}/check-manifest.json %{buildroot}%{_prefix}/lib/fastdev/%{board_id}/
+cp -a %{data_dir}/10-fastdev-precomputed.rules %{buildroot}%{_prefix}/lib/udev/rules.d/
+
+%files
+%{_prefix}/lib/fastdev/%{board_id}
+%{_prefix}/lib/udev/rules.d/10-fastdev-precomputed.rules
+
+%changelog
+* Wed Nov 18 2026 fastdev - 0.1.0-1
+- Initial packaging (Milestone 1-4 scope).
