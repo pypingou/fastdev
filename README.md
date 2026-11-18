@@ -170,6 +170,50 @@ stale capture doesn't cause incorrect behavior (a mismatched device just
 falls back to the real `blkid` probe, per device), it just means that
 device gets no speedup until recaptured.
 
+## Building the binary RPMs from a tarball
+
+`fastdev-prep.spec`, `fastdev-usb.spec`, and `fastdev-tools.spec` have no
+`Source0`/`%prep`/`%build` section - they expect release binaries to
+already exist under `%{fastdev_src}/target/release/` (default
+`%{_sourcedir}/..`, overridable with `--define "fastdev_src <path>"`) and
+just copy them into the buildroot. To build from a tarball rather than a
+live checkout:
+
+1. Build the release binaries first - the specs copy them, they don't
+   invoke `cargo`:
+   ```
+   cargo build --release --workspace
+   ```
+
+2. Tarball the source tree, including the now-built `target/release/`
+   (`git archive` won't work here: `target/` is gitignored, and that's
+   exactly what the specs read from):
+   ```
+   tar czf fastdev-0.1.0.tar.gz \
+       --exclude=.git --exclude=build --exclude='target/debug' \
+       -C .. "$(basename "$PWD")"
+   ```
+
+3. Set up a standard rpmbuild tree and extract the tarball into it:
+   ```
+   rpmdev-setuptree   # creates ~/rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
+   cp fastdev-0.1.0.tar.gz ~/rpmbuild/SOURCES/
+   tar xzf ~/rpmbuild/SOURCES/fastdev-0.1.0.tar.gz -C ~/rpmbuild/SOURCES/
+   ```
+
+4. Build each package against the extracted tree:
+   ```
+   rpmbuild -bb rpm/fastdev-prep.spec \
+       --define "fastdev_src $HOME/rpmbuild/SOURCES/fastdev-0.1.0"
+   rpmbuild -bb rpm/fastdev-usb.spec \
+       --define "fastdev_src $HOME/rpmbuild/SOURCES/fastdev-0.1.0"
+   rpmbuild -bb rpm/fastdev-tools.spec \
+       --define "fastdev_src $HOME/rpmbuild/SOURCES/fastdev-0.1.0"
+   ```
+   RPMs land in `~/rpmbuild/RPMS/<arch>/`. For a quick local build without
+   a tarball, skip steps 2-3 and pass `--define "fastdev_src $PWD"` (the
+   repo root) straight after step 1 instead.
+
 ## Status
 
 The rule-based speed mechanism above is implemented and validated: boots
