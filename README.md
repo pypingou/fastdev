@@ -53,8 +53,16 @@ in that phase, so fastdev doesn't and can't touch it.
    informational only, it doesn't gate or control anything.
 4. **USB hotplug** (`fastdev-gatekeeper`) is a default-deny VID:PID
    allow-list helper for the one genuinely dynamic bus, with anti-spoofing
-   checks keyed on physical port path — not yet wired into a boot-time
-   unit (Milestone 5, not started).
+   checks keyed on physical port path, invoked from a real enforcement
+   rule (`99-fastdev-usb.rules`) that's installed system-wide by
+   `fastdev-usb.spec`. Because the stock udev chain is never masked, that
+   rule is already live under the real daemon — no separate boot-time unit
+   is needed for it to take effect. The earlier plan for a scoped
+   fast-path `usb-udevd.service` belonged to the abandoned masking-based
+   design and isn't needed now that udev stays in the loop; what's left of
+   Milestone 5 is just an `udevadm test`-driven audit of which stock USB
+   rule stanzas (mass-storage, serial, HID) should coexist with the
+   gatekeeper rule.
 
 An earlier "mask the stock udev chain, replay precomputed data directly"
 design was built, extensively tested, and abandoned after real
@@ -221,9 +229,15 @@ cleanly and reproducibly under QEMU (confirmed across multiple reboots),
 with the measured `systemd-udev-trigger.service` improvement above.
 `fastdev-prep`/`static-devprep.service` (the earlier, abandoned replay
 mechanism) still exist as tested code but aren't wired into the boot path.
-Milestone 5 (Phase 2 USB) exists as scaffolding only —
-`99-fastdev-usb.rules` is still placeholder content and nothing enables
-`usb-udevd.service` yet.
+Milestone 5 (Phase 2 USB) has a working enforcement rule:
+`fastdev-gatekeeper` and `99-fastdev-usb.rules` are implemented and
+installed into the real `rules.d` by `fastdev-usb.spec`, so the
+default-deny allow-list is already enforced under the stock udev chain
+wherever that package is installed. The scoped `usb-udevd.service` design
+is no longer needed — it was built for the abandoned masking-based
+architecture, and the real udevd already handles USB hotplug unmodified.
+What's left is just the `udevadm test`-driven audit of which stock USB
+rule stanzas should coexist with the gatekeeper rule.
 
 ## Repository layout
 
@@ -235,10 +249,16 @@ crates/
                          (+ the earlier replay-mechanism artifacts, unused)
   fastdev-prep/         boot-time replay (built, tested, not wired in - see Status)
   fastdev-check/        boot-time diagnostic generator (validates, logs; no longer gates anything)
-  fastdev-gatekeeper/   Phase 2 USB allow-list helper (not yet wired in)
+  fastdev-gatekeeper/   Phase 2 USB allow-list helper (implemented; invoked from
+                        the enforcement rule below, already enforced under the
+                        stock udev chain)
   fastdev-diff/         CI/validation tool, diffs live state against a capture
-systemd/                static-devprep.service, usb-udevd.service (installed, not enabled)
-udev-rules/             99-fastdev-usb.rules (Phase 2, placeholder content)
+systemd/                static-devprep.service (earlier, abandoned replay design),
+                        usb-udevd.service (earlier scoped-hotplug design,
+                        superseded now that udev stays in the loop - see Status;
+                        installed, not enabled)
+udev-rules/             99-fastdev-usb.rules (Phase 2 USB gatekeeper enforcement
+                        rule, implemented and live; installed by fastdev-usb.spec)
 rpm/                    RPM spec files for all of the above
 config/                 default usb-allowlist.toml
 qemu/                   aib/aib-dev manifests for building test images
