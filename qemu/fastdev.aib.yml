@@ -1,0 +1,48 @@
+# fastdev-enabled test image. The speed mechanism is
+# fastdev-data-qemu-x86_64's generated 10-fastdev-precomputed.rules udev
+# rule (pre-seeds ID_FS_* properties, skips blkid's real disk read per
+# device) - the stock udev chain (daemon/trigger/settle/sockets) runs
+# completely unmodified, so `.device` units keep working normally.
+# fastdev-check (from fastdev-prep's package) is diagnostic-only now: it
+# validates the capture against live hardware and logs the result, but
+# doesn't enable or mask anything. Build fastdev-* RPMs into a local repo
+# first (createrepo_c), then either set content.repos[].baseurl below or
+# pass `--local-repo <path>` on the aib-dev/aib command line instead.
+
+name: fastdev-test
+
+content:
+  repos:
+    - id: fastdev-local
+      baseurl: file:///home/pierrey/tmp/fastdev/build/repo
+      priority: 1
+
+  rpms:
+    - fastdev-prep
+    - fastdev-data-qemu-x86_64
+    - fastdev-usb
+    # test-only: fastdev-tools so fastdev-diff can validate post-boot,
+    # openssh-server so we can get in to check:
+    - fastdev-tools
+    - openssh-server
+
+  add_files:
+    # Stand-in for the real provisioning/OTA system (still an open
+    # question) - this test VM has exactly one board identity.
+    - path: /etc/fastdev-board-id
+      text: "qemu-x86_64"
+
+  systemd:
+    enabled_services:
+      - sshd.service   # test-only
+    # static-devprep.service/usb-udevd.service are not listed: that whole
+    # mechanism (mask stock udev, replay our own data) was abandoned after
+    # it was confirmed to hang (see fastdev-check's own doc comment) - the
+    # units are installed but intentionally inert.
+
+auth:
+  # "password" - test VM only, never use outside local dev/CI
+  root_password: $6$xoLqEUz0cGGJRx01$H3H/bFm0myJPULNMtbSsOFd/2BnHqHkMD92Sfxd.EKM9hXTWSmELG8cf205l6dktomuTcgKGGtGDgtvHVXSWU.
+  sshd_config:
+    PasswordAuthentication: true
+    PermitRootLogin: true
