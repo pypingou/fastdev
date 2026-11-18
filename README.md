@@ -54,10 +54,11 @@ in that phase, so fastdev doesn't and can't touch it.
 4. **USB hotplug** (`fastdev-gatekeeper`) is a default-deny VID:PID
    allow-list helper for the one genuinely dynamic bus, with anti-spoofing
    checks keyed on physical port path, invoked from a real enforcement
-   rule (`99-fastdev-usb.rules`) that's installed system-wide by
-   `fastdev-usb.spec`. Because the stock udev chain is never masked, that
-   rule is already live under the real daemon — no separate boot-time unit
-   is needed for it to take effect. The earlier plan for a scoped
+   rule (`99-fastdev-usb.rules`) that's installed system-wide by the
+   `fastdev-usb` package (`rpm/fastdev.spec`). Because the stock udev chain
+   is never masked, that rule is already live under the real daemon — no
+   separate boot-time unit is needed for it to take effect. The earlier
+   plan for a scoped
    fast-path `usb-udevd.service` belonged to the abandoned masking-based
    design and isn't needed now that udev stays in the loop; what's left of
    Milestone 5 is just an `udevadm test`-driven audit of which stock USB
@@ -180,50 +181,41 @@ device gets no speedup until recaptured.
 
 ## Building the binary RPMs from a tarball
 
-`fastdev-prep.spec`, `fastdev-usb.spec`, and `fastdev-tools.spec` have no
-`Source0`/`%prep`/`%build` section - they expect release binaries to
-already exist under `%{fastdev_src}/target/release/` (default
-`%{_sourcedir}/..`, overridable with `--define "fastdev_src <path>"`) and
-just copy them into the buildroot. To build from a tarball rather than a
-live checkout:
+`rpm/fastdev.spec` builds the whole Cargo workspace from source in
+`%build` (`cargo build --release --workspace`) and splits the resulting
+binaries into three subpackages - `fastdev-prep`, `fastdev-usb`,
+`fastdev-tools` - from a single `rpmbuild -bb` invocation. To build from a
+tarball rather than a live checkout:
 
-1. Build the release binaries first - the specs copy them, they don't
-   invoke `cargo`:
-   ```
-   cargo build --release --workspace
-   ```
-
-2. Tarball the source tree, including the now-built `target/release/`
-   (`git archive` won't work here: `target/` is gitignored, and that's
-   exactly what the specs read from). Write the archive *outside* the tree
-   being archived — writing it inside (even with a matching `--exclude`)
-   still changes the directory's own entry list while tar is walking it,
-   which tar reports as "file changed as we read it":
+1. Tarball the source tree (`git archive` won't work here: a plain source
+   snapshot is exactly what `%prep`/`%build` need - `target/` is excluded
+   and not shipped, since `%build` compiles it fresh inside the chroot).
+   Write the archive *outside* the tree being archived — writing it inside
+   (even with a matching `--exclude`) still changes the directory's own
+   entry list while tar is walking it, which tar reports as "file changed
+   as we read it":
    ```
    tar czf ../fastdev-0.1.0.tar.gz \
-       --exclude=.git --exclude=build --exclude='target/debug' \
+       --exclude=.git --exclude=build --exclude=target \
        -C .. "$(basename "$PWD")"
    ```
 
-3. Set up a standard rpmbuild tree and extract the tarball into it:
+2. Set up a standard rpmbuild tree and place the tarball in `SOURCES`
+   (`%prep`'s `%setup` extracts it, not you):
    ```
    rpmdev-setuptree   # creates ~/rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
    cp ../fastdev-0.1.0.tar.gz ~/rpmbuild/SOURCES/
-   tar xzf ~/rpmbuild/SOURCES/fastdev-0.1.0.tar.gz -C ~/rpmbuild/SOURCES/
    ```
 
-4. Build each package against the extracted tree:
+3. Build all three packages in one invocation:
    ```
-   rpmbuild -bb rpm/fastdev-prep.spec \
-       --define "fastdev_src $HOME/rpmbuild/SOURCES/fastdev-0.1.0"
-   rpmbuild -bb rpm/fastdev-usb.spec \
-       --define "fastdev_src $HOME/rpmbuild/SOURCES/fastdev-0.1.0"
-   rpmbuild -bb rpm/fastdev-tools.spec \
-       --define "fastdev_src $HOME/rpmbuild/SOURCES/fastdev-0.1.0"
+   rpmbuild -bb rpm/fastdev.spec
    ```
-   RPMs land in `~/rpmbuild/RPMS/<arch>/`. For a quick local build without
-   a tarball, skip steps 2-3 and pass `--define "fastdev_src $PWD"` (the
-   repo root) straight after step 1 instead.
+   RPMs land in `~/rpmbuild/RPMS/<arch>/`: `fastdev-prep-*.rpm`,
+   `fastdev-usb-*.rpm`, `fastdev-tools-*.rpm`. `cargo` needs network access
+   to fetch crates during `%build` unless dependencies are vendored
+   (`cargo vendor`) with `.cargo/config.toml` pointed at the vendored tree
+   - relevant if your `mock`/`koji` build root is network-sandboxed.
 
 ## Status
 
@@ -234,8 +226,9 @@ with the measured `systemd-udev-trigger.service` improvement above.
 mechanism) still exist as tested code but aren't wired into the boot path.
 Milestone 5 (Phase 2 USB) has a working enforcement rule:
 `fastdev-gatekeeper` and `99-fastdev-usb.rules` are implemented and
-installed into the real `rules.d` by `fastdev-usb.spec`, so the
-default-deny allow-list is already enforced under the stock udev chain
+installed into the real `rules.d` by the `fastdev-usb` package
+(`rpm/fastdev.spec`), so the default-deny allow-list is already enforced
+under the stock udev chain
 wherever that package is installed. The scoped `usb-udevd.service` design
 is no longer needed — it was built for the abandoned masking-based
 architecture, and the real udevd already handles USB hotplug unmodified.
@@ -261,8 +254,12 @@ systemd/                static-devprep.service (earlier, abandoned replay design
                         superseded now that udev stays in the loop - see Status;
                         installed, not enabled)
 udev-rules/             99-fastdev-usb.rules (Phase 2 USB gatekeeper enforcement
-                        rule, implemented and live; installed by fastdev-usb.spec)
-rpm/                    RPM spec files for all of the above
+                        rule, implemented and live; installed by the fastdev-usb
+                        package)
+rpm/                    fastdev.spec (one spec, one build, fastdev-prep/-usb/-tools
+                        as subpackages - see Status) + fastdev-data.spec.in
+                        (per board_id, separate - see "Installing the precomputed
+                        policy" above)
 config/                 default usb-allowlist.toml
 qemu/                   aib/aib-dev manifests for building test images
 ```
