@@ -62,6 +62,114 @@ design was built, extensively tested, and abandoned after real
 (used by e.g. the ESP partition mount) — the ruleset-tweak approach above
 exists because of what that investigation found.
 
+## Installing the precomputed policy in an AIB manifest
+
+The precomputed policy is just an RPM, `fastdev-data-<board_id>`, built from
+a `fastdev-capture` + `fastdev-compile` run against a reference boot of the
+real target hardware/board revision. There's one such RPM per `board_id`.
+
+1. **Capture**, on a reference boot of the real board (needs a live, settled
+   `systemd-udevd` — not something you can do as part of the image build
+   itself):
+   ```
+   fastdev-capture --board-id <board_id> --out capture.json
+   ```
+   Pull `capture.json` off the device (`scp`, shared dir, etc.) onto the
+   build host.
+
+2. **Compile**, on the build host:
+   ```
+   fastdev-compile --in capture.json --board-id <board_id> \
+       --out-dir fastdev-data-<board_id>/ \
+       --include-subsystem block
+   ```
+   `--include-subsystem` is repeatable; scope it to the subsystems you
+   actually want pre-seeded (typically just `block`, for the blkid-skip
+   mechanism — run `fastdev-compile --help` for why including everything
+   captured by default is usually the wrong call once GPU/optional-module
+   devices are present).
+
+3. **Package** the compiled output as an RPM with the template in
+   `rpm/fastdev-data.spec.in`:
+   ```
+   rpmbuild -bb rpm/fastdev-data.spec.in \
+       --define "board_id <board_id>" \
+       --define "data_dir $PWD/fastdev-data-<board_id>"
+   ```
+   This produces `fastdev-data-<board_id>-<version>.<dist>.noarch.rpm`,
+   containing the generated `10-fastdev-precomputed.rules` and the
+   `check-manifest.json` `fastdev-check` validates live hardware against.
+   Build `fastdev-prep`'s RPM too (it carries the `fastdev-check` binary),
+   then put both into a local dnf repo:
+   ```
+   mkdir -p /path/to/repo && cp *.rpm /path/to/repo/ && createrepo_c /path/to/repo
+   ```
+
+4. **Reference it from the AIB manifest** (see `qemu/fastdev.aib.yml` for a
+   complete worked example):
+   ```yaml
+   content:
+     repos:
+       - id: fastdev-local
+         baseurl: file:///path/to/repo
+         priority: 1
+     rpms:
+       - fastdev-prep
+       - fastdev-data-<board_id>
+     add_files:
+       # Stand-in for the real provisioning/OTA system (open question) -
+       # selects which board's data package fastdev-check validates
+       # against at runtime.
+       - path: /etc/fastdev-board-id
+         text: "<board_id>"
+   ```
+   `fastdev-check` reads `/etc/fastdev-board-id` (override with the
+   `FASTDEV_BOARD_ID_FILE` env var) to pick which
+   `/usr/lib/fastdev/<board_id>/` data to validate against. The udev rule
+   itself, installed unconditionally by `fastdev-data-<board_id>`, doesn't
+   depend on that file — it matches on `DEVPATH` directly, so a missing or
+   wrong board-id file only affects the diagnostic, never the speedup or
+   its fail-safe fallback.
+
+### Alternative: install the generated files directly, no RPM
+
+The speed mechanism itself needs exactly one file —
+`10-fastdev-precomputed.rules` is self-contained and matches on `DEVPATH`
+directly, with no runtime dependency on `tmpfiles.conf` or the `udev-data/`
+tree (those two are only consumed by the earlier, abandoned replay design,
+`fastdev-prep` — see "How it works" above). `check-manifest.json` is needed
+only if you also want the `fastdev-check` diagnostic. So for a single board
+or quick local testing, skip steps 3-4 above and `add_files` the two
+relevant outputs of step 2 straight into the manifest instead of building
+an RPM — AIB's `add_files` supports a local `source_path`, not just inline
+`text:`:
+```yaml
+content:
+  add_files:
+    - path: /usr/lib/udev/rules.d/10-fastdev-precomputed.rules
+      source_path: fastdev-data-<board_id>/10-fastdev-precomputed.rules
+    - path: /usr/lib/fastdev/<board_id>/check-manifest.json
+      source_path: fastdev-data-<board_id>/check-manifest.json
+    - path: /etc/fastdev-board-id
+      text: "<board_id>"
+  rpms:
+    - fastdev-prep   # still needed for the fastdev-check binary itself
+```
+This is simpler for one-off boards, but you lose dnf-level
+versioning/removal and the `fastdev-data.spec.in` template's actual design
+intent — a separate package per board revision specifically so recapturing
+a board's data never forces a `fastdev-prep` rebuild/requalification. Past
+a handful of boards, or once you're regenerating captures regularly, the
+RPM route pays for itself; for one board or a quick experiment, `add_files`
+is less ceremony.
+
+Recapture and rebuild `fastdev-data-<board_id>` whenever the board's storage
+topology changes (new partition layout, different controller/bus
+enumeration order, a kernel bump that changes device naming/order) — a
+stale capture doesn't cause incorrect behavior (a mismatched device just
+falls back to the real `blkid` probe, per device), it just means that
+device gets no speedup until recaptured.
+
 ## Status
 
 The rule-based speed mechanism above is implemented and validated: boots
