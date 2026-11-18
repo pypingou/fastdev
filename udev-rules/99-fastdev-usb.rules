@@ -1,0 +1,19 @@
+# fastdev USB gatekeeper. Single source file, installed to TWO locations
+# by fastdev-usb.spec:
+#   /usr/lib/udev/rules.d/99-fastdev-usb.rules       (real, system-wide -
+#     used by the stock fallback udevd chain so allow-list enforcement
+#     survives a fastdev-check mismatch)
+#   /usr/lib/fastdev/usb-rules.d/99-fastdev-usb.rules (curated copy that
+#     usb-udevd.service bind-mounts over its own rules.d view)
+# Keep these identical by generating both from this one file at package
+# build time - do not hand-maintain two copies.
+
+SUBSYSTEM!="usb", GOTO="fastdev_usb_end"
+ACTION!="add", GOTO="fastdev_usb_end"
+
+IMPORT{program}="/usr/lib/fastdev/bin/fastdev-gatekeeper check"
+# Default-deny: only an explicit "1" admits the device - a
+# crashed/timed-out/missing gatekeeper denies, never silently admits.
+ENV{FASTDEV_ALLOW}!="1", OPTIONS+="ignore_device"
+
+LABEL="fastdev_usb_end"

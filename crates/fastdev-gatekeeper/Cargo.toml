@@ -1,0 +1,14 @@
+[package]
+name = "fastdev-gatekeeper"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "fastdev-gatekeeper"
+path = "src/main.rs"
+
+[dependencies]
+fastdev-common = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+anyhow = { workspace = true }

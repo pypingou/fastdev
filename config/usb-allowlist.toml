@@ -1,0 +1,24 @@
+# fastdev-gatekeeper policy. Installed at
+# /etc/fastdev/usb-allowlist.toml.
+#
+# IMPORTANT: `default` and `trusted_port_prefixes` must stay ABOVE the first
+# [[entries]]/[[reserved]] table. In TOML, a bare `key = value` placed after
+# an array-of-tables header attaches to that table's last entry, not back to
+# the top level - misplacing these two lines silently breaks the anti-spoof
+# check without any parse error.
+
+default = "deny"
+
+# VID:PID used by internal/fixed USB peripherals captured in Phase 1 (e.g. a
+# soldered CAN-over-USB bridge). Trusted ONLY when also arriving on one of
+# these port paths - the same VID:PID on any other port is denied
+# unconditionally as a likely spoofing attempt.
+trusted_port_prefixes = []
+
+# [[entries]]
+# vendor_id = "0781"
+# model_id  = "5567"
+
+# [[reserved]]
+# vendor_id = "dead"
+# model_id  = "beef"

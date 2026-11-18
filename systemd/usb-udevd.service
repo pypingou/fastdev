@@ -1,0 +1,20 @@
+# Phase 2, scoped to the exposed USB port only. No [Install] section
+# (same reasoning as static-devprep.service) - fastdev-check enables this
+# for the boot, never both this and the stock udev chain at once.
+#
+# BindReadOnlyPaths gives this instance a private, curated view of
+# rules.d containing only the USB-relevant stanzas + the gatekeeper rule,
+# without touching the real /usr/lib/udev/rules.d that the stock fallback
+# instance relies on for full discovery.
+[Unit]
+Description=fastdev Phase 2 scoped udevd (exposed USB port)
+After=static-devprep.service
+
+[Service]
+ExecStart=
+ExecStart=/usr/lib/systemd/systemd-udevd --resolve-names=never
+# --subsystem-match=usb is the generic placeholder; narrow this to the
+# exact exposed-port subtree (e.g. --subtree-match=/sys/bus/usb/devices/1-2)
+# once the real board's USB topology is known.
+ExecStartPost=/usr/bin/udevadm trigger --settle --subsystem-match=usb
+BindReadOnlyPaths=/usr/lib/fastdev/usb-rules.d:/usr/lib/udev/rules.d
