@@ -1,0 +1,12 @@
+[package]
+name = "fastdev-prep"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "fastdev-prep"
+path = "src/main.rs"
+
+[dependencies]
+fastdev-common = { workspace = true }
+anyhow = { workspace = true }

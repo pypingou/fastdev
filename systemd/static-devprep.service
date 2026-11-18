@@ -1,0 +1,24 @@
+# Intentionally no [Install] section. Enabling this
+# unit for a given boot is fastdev-check's job alone (it writes a
+# sysinit.target.wants/ symlink via the generator directory only on a
+# confirmed match) - a static [Install] here would run the fast path
+# unconditionally every boot and defeat the fail-safe default.
+[Unit]
+Description=fastdev Phase 1 static device bring-up
+DefaultDependencies=no
+After=systemd-tmpfiles-setup-dev.service
+Before=sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# /run/udev/data/* is labeled udev_var_run_t under SELinux (confirmed via
+# a real boot). fastdev-prep is legitimately doing udevd's job, so it runs
+# in udevd's own udev_t domain - via the standard SELinux file-context
+# entrypoint mechanism (fastdev-prep.spec labels the binary udev_exec_t,
+# same as /usr/bin/udevadm), not a forced SELinuxContext= here. An
+# explicit SELinuxContext=udev_t override was tried first and failed with
+# an avc: denied { entrypoint } - the kernel requires the exec'd file
+# itself to carry an allowed entrypoint type, which a unit-file override
+# cannot substitute for.
+ExecStart=/usr/lib/fastdev/bin/fastdev-prep
