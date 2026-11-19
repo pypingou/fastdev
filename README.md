@@ -187,37 +187,40 @@ binaries into three subpackages - `fastdev-prep`, `fastdev-usb`,
 `fastdev-tools` - from a single `rpmbuild -bb` invocation. To build from a
 tarball rather than a live checkout:
 
-1. Vendor the Cargo dependencies first. `%build` runs `cargo build
-   --locked --offline`, because build systems like COPR's actually have no
-   network access in `%build` - confirmed by a real COPR build failing with
-   `Could not resolve host: index.crates.io`. `%prep` generates
-   `.cargo/config.toml` itself (pointing at `vendor/`), so you only need to
-   produce the `vendor/` tree and ship it inside the tarball:
+1. Build the vendored tarball with `make release-vendor` (see `make
+   help`) - this is the one `rpm/fastdev.spec`'s `Source0` expects:
    ```
-   cargo vendor vendor
+   make release-vendor
    ```
+   This vendors the Cargo dependencies into `vendor/`, writes
+   `.cargo/config.toml` pointing at it, then tars the source tree
+   (including `vendor/`) to `../fastdev-<version>-vendored.tar.gz`.
+   Vendoring is required because `%build` runs `cargo build --locked
+   --offline` - build systems like COPR's actually have no network access
+   in `%build`, confirmed by a real COPR build failing with `Could not
+   resolve host: index.crates.io`. `%prep` doesn't need its own copy of
+   `.cargo/config.toml`, since it generates one itself pointing at
+   whatever `vendor/` tree `Source0` shipped.
 
-2. Tarball the source tree (`git archive` won't work here: it wouldn't
-   include the `vendor/` tree just generated, which isn't tracked by git -
-   `target/` is excluded and not shipped, since `%build` compiles it fresh
-   inside the chroot). Write the archive *outside* the tree being archived
-   — writing it inside (even with a matching `--exclude`) still changes the
+   `make release` (no `-vendor`) builds a plain, smaller
+   `../fastdev-<version>.tar.gz` with no `vendor/`/`.cargo/` - fine for a
+   local/live-checkout build where `cargo` has network access, but not
+   usable as `rpm/fastdev.spec`'s `Source0` on a network-sandboxed build
+   host.
+
+   Both are written *outside* the tree being archived on purpose — writing
+   one inside it (even with a matching `--exclude`) still changes the
    directory's own entry list while tar is walking it, which tar reports
-   as "file changed as we read it":
-   ```
-   tar czf ../fastdev-0.1.0.tar.gz \
-       --exclude=.git --exclude=build --exclude=target \
-       -C .. "$(basename "$PWD")"
-   ```
+   as "file changed as we read it". See `Makefile` for the exact commands.
 
-3. Set up a standard rpmbuild tree and place the tarball in `SOURCES`
-   (`%prep`'s `%setup` extracts it, not you):
+2. Set up a standard rpmbuild tree and place the vendored tarball in
+   `SOURCES` (`%prep`'s `%setup` extracts it, not you):
    ```
    rpmdev-setuptree   # creates ~/rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
-   cp ../fastdev-0.1.0.tar.gz ~/rpmbuild/SOURCES/
+   cp ../fastdev-0.1.0-vendored.tar.gz ~/rpmbuild/SOURCES/
    ```
 
-4. Build all three packages in one invocation:
+3. Build all three packages in one invocation:
    ```
    rpmbuild -bb rpm/fastdev.spec
    ```
@@ -274,7 +277,7 @@ qemu/                   aib/aib-dev manifests for building test images
 ## Building and testing
 
 ```
-cargo build --release --workspace   # build all binaries
+cargo build --release --workspace   # build all binaries (same as `make build`)
 cargo clippy --workspace            # lint
 ```
 

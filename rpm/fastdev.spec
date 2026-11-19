@@ -6,7 +6,7 @@ Version:        0.1.0
 Release:        2%{?dist}
 Summary:        fastdev automotive boot speedup - static device bring-up
 License:        Proprietary
-Source0:        %{name}-%{version}.tar.gz
+Source0:        %{name}-%{version}-vendored.tar.gz
 BuildArch:      %{_arch}
 BuildRequires:  cargo
 BuildRequires:  rust
